@@ -1,0 +1,28 @@
+---
+apiVersion: jokes.example.com/v1alpha1
+kind: ChuckNorris
+metadata:
+  labels:
+    app.kubernetes.io/name: chucknorris
+    app.kubernetes.io/instance: chucknorris-sample
+    app.kubernetes.io/part-of: chucknorrisjoke-controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: chucknorrisjoke-controller
+  name: chucknorris-dev-joke-example
+  namespace: default
+spec:
+  category: dev
+---
+apiVersion: jokes.example.com/v1alpha1
+kind: ChuckNorris
+metadata:
+  labels:
+    app.kubernetes.io/name: chucknorris
+    app.kubernetes.io/instance: chucknorris-sample
+    app.kubernetes.io/part-of: chucknorrisjoke-controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: chucknorrisjoke-controller
+  name: chucknorris-music-joke-example
+  namespace: default
+spec:
+  category: music

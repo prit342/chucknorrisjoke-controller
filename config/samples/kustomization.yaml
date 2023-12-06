@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- jokes_v1alpha1_chucknorris.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples
