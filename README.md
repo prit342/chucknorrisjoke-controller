@@ -66,7 +66,7 @@ You can apply the samples (examples) from the config/sample:
 $ make run
 ```
 
-- Apply the sample CR using the following command from a differnet terminal windows:
+- Apply the sample CR using the following command from a differnet terminal window:
  
 ```sh
 
