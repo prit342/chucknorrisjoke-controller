@@ -24,8 +24,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	jokesv1alpha1 "github.com/prit342/chucknorrisjoke-controller/api/v1alpha1"
@@ -67,6 +69,12 @@ func (r *ChuckNorrisReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return reconcile.Result{}, err
 	}
 
+	// The code below should protect from race condition where two
+	// goroutines can dequeue the same generation before either one has
+	// finished writing status back. Both read the cache, both see ObservedGeneration
+	// is stale, both proceed. This check catches the second goroutine IF the cache
+	// has synced by the time it runs. It is a best-effort safety net, not a
+	// guarantee, but it prevents redundant API calls in the common case.
 	if res.Status.Joke != "" && res.Generation == res.Status.ObservedGeneration {
 		l.Info("Resource already reconciled")
 		return ctrl.Result{}, nil
@@ -116,7 +124,44 @@ func (r *ChuckNorrisReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ChuckNorrisReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	jokeNotFetched := predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		chuckNorris, ok := obj.(*jokesv1alpha1.ChuckNorris)
+		if !ok {
+			// if the cast fails for any reason, let it through and
+			// let Reconcile deal with it safely
+			return true
+		}
+		// Status.Joke is our single source of truth — if it is empty,
+		// work needs to be done. If it is already populated, drop the event.
+		// Note: we use Status.Joke and NOT Status.Conditions[0].Reason because
+		// conditions are for human observability (kubectl describe), not for
+		// driving controller logic. Reason strings are fragile & they can be
+		// renamed in future versions and silently break your predicate.
+		return chuckNorris.Status.Joke == ""
+	})
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&jokesv1alpha1.ChuckNorris{}).
+		For(&jokesv1alpha1.ChuckNorris{},
+			builder.WithPredicates(
+				//
+				// GenerationChangedPredicate is the our first gate.
+				// It drops any event where metadata.generation did not change,
+				// which means only status was updated (e.g. after our own
+				// r.Status().Update() call). Generation only increments on
+				// spec changes, so this keeps the queue clean of self-fired
+				// events that our own status writes produce.
+				predicate.GenerationChangedPredicate{},
+
+				// jokeNotFetched is our second gate.
+				// It protects against a specific case that GenerationChangedPredicate
+				// misses — when the controller pod restarts, controller-runtime
+				// fires a synthetic Create event for every existing object it sees.
+				// GenerationChangedPredicate lets all Create events through by default.
+				// Without this second gate, the controller would re-fetch jokes for
+				// objects that already have one. This gate catches that.
+				jokeNotFetched,
+			),
+		).
 		Complete(r)
 }
